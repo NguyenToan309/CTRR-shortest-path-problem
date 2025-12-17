@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Đồ án CTRR - Giao Hàng Tối Ưu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+        
+        /* Sidebar Styling */
+        .sidebar {
+            height: 100vh;
+            background: #ffffff;
+            border-right: 1px solid #dee2e6;
+            padding: 20px;
+            display: flex; flex-direction: column;
+            z-index: 100;
+            box-shadow: 4px 0 10px rgba(0,0,0,0.02);
+        }
+        
+        /* Branding khớp với báo cáo */
+        .app-brand { 
+            color: #0d6efd; 
+            font-weight: 800; 
+            font-size: 1.3rem; 
+            margin-bottom: 30px; 
+            display: flex; align-items: center; gap: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .control-group { margin-bottom: 25px; }
+        .control-label { font-size: 0.7rem; text-transform: uppercase; color: #adb5bd; font-weight: 700; margin-bottom: 8px; }
+        
+        /* Buttons */
+        .btn-tool { 
+            width: 100%; text-align: left; margin-bottom: 8px; 
+            border: 1px solid #e9ecef; color: #495057; font-weight: 500;
+            padding: 10px 15px; border-radius: 8px; transition: all 0.2s;
+        }
+        .btn-tool:hover, .btn-tool.active { 
+            background-color: #e7f1ff; color: #0d6efd; border-color: #cff4fc; 
+            box-shadow: 0 2px 4px rgba(13, 110, 253, 0.1);
+        }
+        
+        .btn-solve {
+            background: linear-gradient(135deg, #0d6efd, #0043a8); 
+            border: none; width: 100%; padding: 12px; border-radius: 10px; 
+            font-weight: 600; color: white; box-shadow: 0 4px 10px rgba(13, 110, 253, 0.3);
+            transition: transform 0.2s;
+        }
+        .btn-solve:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(13, 110, 253, 0.4); }
+
+        /* Map Area */
+        #mynetwork { width: 100%; height: 100vh; background: #f8f9fa; }
+        
+        /* Result Floating Card */
+        .result-card {
+            position: absolute; top: 20px; right: 20px; width: 340px;
+            background: white; border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 20px; display: none; border-left: 6px solid #198754;
+        }
+        .log-header { font-size: 0.9rem; font-weight: 700; color: #198754; margin-bottom: 10px; text-transform: uppercase; }
+        .log-item { font-size: 0.9rem; margin-bottom: 8px; border-bottom: 1px dashed #f1f3f5; padding-bottom: 5px; color: #212529; }
+        
+        /* Footer */
+        .sidebar-footer { margin-top: auto; border-top: 1px solid #eee; padding-top: 15px; text-align: center; font-size: 0.8rem; color: #888; }
+    </style>
+</head>
+<body>
+
+<div class="d-flex">
+    <div class="sidebar" style="width: 340px;">
+        <div class="app-brand">
+            <i class="fa-solid fa-truck-fast"></i> GIAO HÀNG TỐI ƯU
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">Công cụ mô hình hóa</div>
+            <button class="btn btn-light btn-tool active" onclick="setMode('addNode', 'warehouse')">
+                <i class="fa-solid fa-warehouse text-primary me-2"></i> Thêm Kho Hàng (Nguồn)
+            </button>
+            <button class="btn btn-light btn-tool" onclick="setMode('addNode', 'customer')">
+                <i class="fa-solid fa-location-dot text-danger me-2"></i> Thêm Khách Hàng (Đích)
+            </button>
+            <button class="btn btn-light btn-tool" onclick="setMode('addEdge')">
+                <i class="fa-solid fa-route text-secondary me-2"></i> Kết nối Tuyến đường
+            </button>
+            
+            <div class="form-check form-switch mt-2 ms-1">
+                <input class="form-check-input" type="checkbox" id="autoWeight" checked>
+                <label class="form-check-label small text-muted fw-bold" for="autoWeight">
+                    Tự động tính khoảng cách (km)
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="control-label">Thuật toán xử lý</div>
+            <select class="form-select mb-3 shadow-sm" id="algoSelect" onchange="updateDesc()">
+                <optgroup label="Tối ưu hóa Giao hàng">
+                    <option value="TSP">📦 Giao hàng tối ưu (TSP 2-Opt)</option>
+                    <option value="Dijkstra">🛣️ Đường đi ngắn nhất (Dijkstra)</option>
+                </optgroup>
+                <optgroup label="Phân tích Mạng lưới">
+                    <option value="MaxFlow">📊 Luồng cực đại (Max Flow)</option>
+                </optgroup>
+            </select>
+            
+            <div id="algoDesc" class="alert alert-light border small text-muted fst-italic p-2">
+                * Tối ưu hóa lộ trình đi qua tất cả các điểm và quay về kho với chi phí thấp nhất.
+            </div>
+
+            <button class="btn btn-solve" onclick="solve()">
+                <i class="fa-solid fa-calculator me-2"></i> TÍNH TOÁN TỐI ƯU
+            </button>
+        </div>
+
+        <div class="sidebar-footer">
+            <button class="btn btn-outline-secondary w-100 btn-sm mb-3" onclick="clearMap()">
+                <i class="fa-solid fa-rotate"></i> Làm mới
+            </button>
+            <div><strong>NHÓM G</strong></div>
+            <div>Báo cáo Đồ án Cấu Trúc Rời Rạc</div>
+        </div>
+    </div>
+
+    <div style="flex-grow: 1; position: relative;">
+        <div id="mynetwork"></div>
+        
+        <div id="resultCard" class="result-card">
+            <div class="log-header"><i class="fa-solid fa-file-invoice"></i> Kết quả phân tích</div>
+            <div id="logContent"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- CẤU HÌNH VIS.JS ---
+    var nodes = new vis.DataSet([]);
+    var edges = new vis.DataSet([]);
+    var container = document.getElementById('mynetwork');
+    var data = { nodes: nodes, edges: edges };
+    
+    // Giao diện đồ thị sạch sẽ, icon phẳng
+    var options = {
+        nodes: {
+            font: { face: 'Segoe UI', size: 14, color: '#495057', strokeWidth: 0, vadjust: -30 },
+            borderWidth: 0,
+            shadow: { enabled: true, color: 'rgba(0,0,0,0.1)', size: 10, x: 5, y: 5 }
+        },
+        edges: {
+            width: 2,
+            color: { color: '#ced4da', highlight: '#0d6efd' },
+            font: { align: 'top', size: 12, background: 'rgba(255,255,255,0.9)', strokeWidth: 0 },
+            smooth: { type: 'continuous', roundness: 0.1 }
+        },
+        interaction: { hover: true, selectConnectedEdges: false },
+        physics: false,
+        manipulation: { enabled: false } 
+    };
+    
+    var network = new vis.Network(container, data, options);
+    
+    // --- STATE ---
+    var currentMode = 'view';
+    var nodeType = 'warehouse';
+    var srcId = null, sinkId = null;
+
+    // --- CẬP NHẬT MÔ TẢ ---
+    function updateDesc() {
+        var algo = document.getElementById('algoSelect').value;
+        var desc = document.getElementById('algoDesc');
+        if(algo === 'Dijkstra') desc.innerText = "* Tìm lộ trình tiết kiệm chi phí nhất giữa Kho và một Khách hàng cụ thể.";
+        else if(algo === 'TSP') desc.innerText = "* Tối ưu hóa lộ trình đi qua tất cả các điểm và quay về kho (Bài toán Shipper).";
+        else if(algo === 'MaxFlow') desc.innerText = "* Tính toán năng lực vận chuyển tối đa của hệ thống mạng lưới.";
+    }
+
+    // --- TOOLBAR ACTIONS ---
+    function setMode(mode, type) {
+        currentMode = mode;
+        nodeType = type || 'warehouse';
+        
+        // Active button styling
+        document.querySelectorAll('.btn-tool').forEach(b => b.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+        
+        if (mode === 'addEdge') network.addEdgeMode();
+        else network.disableEditMode();
+    }
+
+    // --- SỰ KIỆN CLICK BẢN ĐỒ ---
+    network.on("click", function (params) {
+        if (currentMode === 'addNode') {
+            var coords = params.pointer.canvas;
+            var id = nodes.length;
+            var isWarehouse = (nodeType === 'warehouse');
+            var label = isWarehouse ? "Kho " + (id+1) : "Khách " + (id+1);
+            
+            // Icon Mapping (FontAwesome Unicode)
+            var iconCode = isWarehouse ? '\uf494' : '\uf3c5'; 
+            var color = isWarehouse ? '#0d6efd' : '#dc3545'; 
+
+            nodes.add({
+                id: id,
+                label: label,
+                group: nodeType,
+                x: coords.x, y: coords.y,
+                shape: 'icon',
+                icon: { face: "'Font Awesome 6 Free'", code: iconCode, weight: "bold", size: 40, color: color }
+            });
+            
+            // Auto set Source/Sink
+            if (isWarehouse && srcId === null) srcId = id;
+            else sinkId = id;
+        }
+    });
+
+    // --- VẼ CẠNH TÙY BIẾN ---
+    options.manipulation = {
+        addEdge: function(data, callback) {
+            if (data.from == data.to) return;
+            var isAuto = document.getElementById('autoWeight').checked;
+            var algo = document.getElementById('algoSelect').value;
+            var label = "";
+
+            if (isAuto) {
+                var p1 = network.getPositions([data.from])[data.from];
+                var p2 = network.getPositions([data.to])[data.to];
+                // Tính khoảng cách pixel -> km giả lập
+                var dist = Math.round(Math.sqrt(Math.pow(p1.x-p2.x, 2) + Math.pow(p1.y-p2.y, 2)) / 10);
+                label = (algo === 'MaxFlow') ? "Cap: " + dist : dist + " km";
+            } else {
+                var txt = (algo === 'MaxFlow') ? "Nhập sức chứa (xe/giờ):" : "Nhập khoảng cách (km):";
+                var val = prompt(txt, "10");
+                if (val === null) return;
+                label = (algo === 'MaxFlow') ? "Cap: " + val : val + " km";
+            }
+
+            data.label = label;
+            data.arrows = (algo === 'MaxFlow') ? 'to' : undefined;
+            callback(data);
+            network.addEdgeMode();
+        }
+    };
+    network.setOptions(options);
+
+    // --- GỬI YÊU CẦU XỬ LÝ ---
+    function solve() {
+        if (nodes.length < 2) return alert("Vui lòng vẽ bản đồ trước (Ít nhất 2 điểm)!");
+        
+        var algo = document.getElementById('algoSelect').value;
+        var payload = {
+            nodes: nodes.get(),
+            edges: edges.get(),
+            algo: algo,
+            src: srcId !== null ? srcId : 0,
+            sink: sinkId !== null ? sinkId : nodes.length-1
+        };
+
+        // Reset Styles
+        var allEdges = edges.get();
+        allEdges.forEach(e => edges.update({id: e.id, color: {color: '#ced4da'}, width: 2}));
+        document.getElementById('resultCard').style.display = 'none';
+
+        fetch('/solve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.status === 'error') return alert(res.logs[0]);
+            
+            // Show Log
+            var logHtml = "";
+            res.logs.forEach(l => logHtml += `<div class="log-item"><i class="fa-solid fa-check text-success"></i> ${l}</div>`);
+            document.getElementById('logContent').innerHTML = logHtml;
+            document.getElementById('resultCard').style.display = 'block';
+
+            // Run Animation
+            animate(res.visuals);
+        });
+    }
+
+    function animate(visuals) {
+        if (!visuals || visuals.length === 0) return;
+        var allEdges = edges.get();
+        var stepIndex = 0;
+
+        function playStep() {
+            if (stepIndex >= visuals.length) return;
+            var item = visuals[stepIndex];
+            
+            // Helper function to animate edges sequentially
+            if (item.type === 'path' || item.type === 'flow') {
+                let pathEdges = item.edges;
+                let k = 0;
+                function subStep() {
+                    if (k >= pathEdges.length) return;
+                    let pair = pathEdges[k];
+                    let edge = allEdges.find(e => (e.from == pair[0] && e.to == pair[1]) || (e.from == pair[1] && e.to == pair[0]));
+                    
+                    if(edge) {
+                        edges.update({
+                            id: edge.id, 
+                            color: {color: item.color}, 
+                            width: 5,
+                            shadow: {enabled: true, color: item.color, blur: 10}
+                        });
+                    }
+                    k++;
+                    setTimeout(subStep, 400); // Tốc độ chạy của xe
+                }
+                subStep();
+            }
+            stepIndex++;
+        }
+        playStep();
+    }
+
+    function clearMap() {
+        nodes.clear(); edges.clear();
+        srcId = null; sinkId = null;
+        document.getElementById('resultCard').style.display = 'none';
+    }
+</script>
+</body>
+</html>
